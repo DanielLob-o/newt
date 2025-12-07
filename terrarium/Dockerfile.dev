@@ -1,0 +1,22 @@
+FROM elixir:latest
+
+# Install inotify-tools (Essential for Phoenix LiveReloader to work on Linux/Docker)
+RUN apt-get update && apt-get install -y inotify-tools build-essential postgresql-client
+
+WORKDIR /app
+
+# Install Hex and Rebar
+RUN mix local.hex --force && \
+    mix local.rebar --force
+
+# Copy the dependency files first (caching layer)
+COPY mix.exs mix.lock ./
+RUN mix deps.get
+
+# Copy the rest of the application
+COPY . .
+
+RUN mix do compile
+
+EXPOSE 4000
+CMD ["mix", "phx.server"]

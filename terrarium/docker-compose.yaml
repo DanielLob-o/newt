@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: newt_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: newt_terrarium_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  terrarium:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: newt_terrarium
+    ports:
+      - "4000:4000"
+    environment:
+      - DB_HOST=db
+      - DB_PASSWORD=postgres
+      - DB_USERNAME=postgres
+      - SECRET_KEY_BASE=super_secret_key_for_dev_only
+    volumes:
+      # To update changes on develop stage
+      - .:/app
+      # Prevent the container from overwriting local /deps and /_build
+      # This keeps compiles fast and separate.
+      - /app/deps
+      - /app/_build
+    depends_on:
+      - db
+    # This enables the interactive terminal for IEx
+    stdin_open: true
+    tty: true
+
+volumes:
+  postgres_data:
