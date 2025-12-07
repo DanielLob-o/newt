@@ -15,7 +15,8 @@ defmodule NewtTerrarium.Application do
       # Start a worker by calling: NewtTerrarium.Worker.start_link(arg)
       # {NewtTerrarium.Worker, arg},
       # Start to serve requests, typically the last entry
-      NewtTerrariumWeb.Endpoint
+      NewtTerrariumWeb.Endpoint,
+      Terrarium.Terrarium
     ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
