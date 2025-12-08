@@ -17,9 +17,8 @@ defmodule NewtTerrariumWeb.Router do
   scope "/", NewtTerrariumWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
 
-    live "/dashboard", DashboardLive
+    live "/", DashboardLive
   end
 
   # Other scopes may use custom stacks.

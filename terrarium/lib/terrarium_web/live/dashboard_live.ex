@@ -3,75 +3,85 @@ defmodule NewtTerrariumWeb.DashboardLive do
   alias Terrarium.Terrarium
 
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Phoenix.PubSub.subscribe(NewtTerrarium.PubSub, "dashboard")
-    {:ok, assign(socket, :groups, Terrarium.get_state())}
+    if connected?(socket), do: Phoenix.PubSub.subscribe(NewtTerrarium.PubSub, "devices")
+    # Mount the current devices
+    {:ok, assign(socket, :devices, Terrarium.get_state())}
   end
 
   def handle_info({:terrarium_updated, new_state}, socket) do
-    {:noreply, assign(socket, :groups, new_state)}
+    {:noreply, assign(socket, :devices, new_state)}
   end
 
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen bg-slate-50 p-8">
-      <header class="mb-8 flex items-center justify-between">
-        <div>
-          <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Terrarium Monitor</h1>
-          <p class="text-slate-500 mt-1">Live telemetry from connected devices</p>
-        </div>
-        <div class="px-3 py-1 bg-green-100 text-green-700 text-sm font-bold rounded-full flex items-center gap-2">
-          <span class="relative flex h-3 w-3">
-            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-          </span>
-          Live Connected
-        </div>
-      </header>
+    <Layouts.app flash={@flash}>
+      <div class="min-h-screen bg-gray-50 p-10">
+        <div class="max-w-7xl mx-auto">
+          <h1 class="text-2xl font-bold text-gray-900 mb-6">Device Registry</h1>
 
-      <div :if={@groups == %{}} class="text-center py-20 border-2 border-dashed border-slate-300 rounded-xl">
-        <p class="text-slate-500 text-lg">Waiting for devices...</p>
-      </div>
+          <div class="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Device ID</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Seen</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Attributes</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                <tr :for={{device_id, device} <- sort_devices(@devices)}>
 
-      <div :for={{group_id, devices} <- @groups} class="mb-12">
-        <h2 class="text-xl font-bold text-slate-700 mb-4 border-b pb-2 flex items-center gap-2">
-          <span class="text-indigo-500">#</span> <%= group_id %>
-        </h2>
+                  <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                      <span class={["h-3 w-3 rounded-full mr-2", if(device.connected, do: "bg-green-500 animate-pulse", else: "bg-gray-400")]}></span>
+                      <span class={["text-sm font-medium", if(device.connected, do: "text-green-700", else: "text-gray-500")]}>
+                        <%= if device.connected, do: "Online", else: "Offline" %>
+                      </span>
+                    </div>
+                  </td>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          <div :for={{device_id, attrs} <- devices} class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-all">
+                  <td class="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                    <%= device_id %>
+                  </td>
 
-            <div class="bg-slate-50 px-5 py-3 border-b border-slate-100 flex justify-between items-center">
-              <h3 class="font-bold text-slate-800"><%= device_id %></h3>
-              <div class="text-xs text-slate-400 font-mono">ID: <%= device_id %></div>
-            </div>
+                  <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                    <%= format_time(device.last_seen) %>
+                  </td>
 
-            <div class="p-5">
-              <dl class="grid grid-cols-2 gap-y-6 gap-x-4">
-                <div :for={{key, val} <- attrs}>
-                  <dt class="text-[10px] uppercase tracking-wider font-bold text-slate-500 mb-1">
-                    <%= key %>
-                  </dt>
-                  <dd class="text-2xl font-semibold text-slate-900 leading-none">
-                    <%= format_value(val) %>
-                  </dd>
-                </div>
-              </dl>
-            </div>
+                  <td class="px-6 py-4 text-sm text-gray-600">
+                    <div class="flex flex-wrap gap-2">
+                      <%= for {k, v} <- device.attrs do %>
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                          <%= k %>: <%= format_val(v) %>
+                        </span>
+                      <% end %>
+                    </div>
+                  </td>
 
+                </tr>
+                <tr :if={map_size(@devices) == 0}>
+                  <td colspan="4" class="px-6 py-10 text-center text-gray-500">
+                    No devices connected yet. Use Postman to connect!
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 
-  # --- HELPER FUNCTIONS ---
+  defp sort_devices(devices) do
+    # Sort online devices to the top
+    Enum.sort_by(devices, fn {_id, device} -> device.connected != true end)
+  end
 
-  # Removes quotes from strings, rounds floats, handles booleans cleanly
-  defp format_value(val) when is_binary(val), do: val
-  defp format_value(val) when is_float(val), do: Float.round(val, 2)
-  defp format_value(true), do: "ON"
-  defp format_value(false), do: "OFF"
-  defp format_value(nil), do: "--"
-  defp format_value(val), do: inspect(val)
+  defp format_time(nil), do: "--"
+  defp format_time(dt), do: Calendar.strftime(dt, "%H:%M:%S UTC")
+
+  defp format_val(v) when is_float(v), do: Float.round(v, 2)
+  defp format_val(v), do: inspect(v)
 end

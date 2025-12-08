@@ -1,62 +1,82 @@
 defmodule Terrarium.Terrarium do
   use GenServer
+  alias Terrarium.Device
 
-  # Client API (Public Interface)
-  # Start the GenServer
+  # --- Client API ---
+
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
   end
 
-  # Channels call here to update data
-  def update_attributes(group_id, pid, attrs) do
-    GenServer.cast(__MODULE__, {:update_attributes, group_id, pid, attrs})
+  def update_device(device_id, attrs) do
+    GenServer.cast(__MODULE__, {:update_device, device_id, attrs})
   end
 
-  # (for debugging)
+  def disconnect_device(device_id) do
+    GenServer.cast(__MODULE__, {:disconnect_device, device_id})
+  end
+
   def get_state do
     GenServer.call(__MODULE__, :get_state)
   end
 
-  # --- Server Callbacks (Internal Logic) ---
+  # --- Server Callbacks ---
 
   @impl true
   def init(_) do
-    # The initial state is an empty map %{}
+    # State is just a flat map: %{ "device_abc" => %Device{...} }
     {:ok, %{}}
   end
 
   @impl true
-  def handle_cast({:update_attributes, group_id, pid, new_attrs}, state) do
-    # Get the map of devices for this group (default to empty map)
+  def handle_cast({:update_device, device_id, new_attrs}, state) do
+    # If exist, fetch, else create a new one
+    device =
+      case Map.get(state, device_id) do
+        nil -> Device.new(device_id, new_attrs)
+        existing -> existing
+      end
 
-    group_devices = Map.get(state, group_id, %{})
+    # Update attributes and timestamps
+    updated_device = %{device |
+      attrs: Map.merge(device.attrs, new_attrs),
+      connected: true,
+      last_seen: DateTime.utc_now()
+    }
 
-    # Get the specific device's CURRENT attributes (default to empty map)
-    current_device_attrs = Map.get(group_devices, pid, %{})
+    # Update the global state map directly
+    new_state = Map.put(state, device_id, updated_device)
 
-    # MERGE the new attributes over the old ones (Patching)
-    updated_device_attrs = Map.merge(current_device_attrs, new_attrs)
+    broadcast_update(new_state)
+    {:noreply, new_state}
+  end
 
-    # Update the group map
-    updated_group = Map.put(group_devices, pid, updated_device_attrs)
+  @impl true
+  def handle_cast({:disconnect_device, device_id}, state) do
+    new_state =
+      case Map.get(state, device_id) do
+        nil ->
+          state # Device didn't exist, do nothing
 
-    # Update the global state
-    new_state = Map.put(state, group_id, updated_group)
+        device ->
+          updated_device = %{device | connected: false, last_seen: DateTime.utc_now()}
+          Map.put(state, device_id, updated_device)
+      end
 
-    # Optional: Print to console to prove it works
-    IO.inspect(new_state, label: "Terrarium State Updated")
-
-    Phoenix.PubSub.broadcast(
-      NewtTerrarium.PubSub,
-      "dashboard",
-      {:terrarium_updated, new_state}
-    )
-
+    broadcast_update(new_state)
     {:noreply, new_state}
   end
 
   @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, state, state}
+  end
+
+  defp broadcast_update(state) do
+    Phoenix.PubSub.broadcast(
+      NewtTerrarium.PubSub,
+      "devices",
+      {:terrarium_updated, state}
+    )
   end
 end
